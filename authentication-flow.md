@@ -5,30 +5,33 @@ All services authenticate through a central **Keycloak** instance using the `com
 ## Authentication Architecture
 
 ```mermaid
-architecture-beta
-    group ext(cloud)[External Identity]
-    service github(internet)[GitHub<br/>fmfi-dai-gpu-servers] in ext
+flowchart TB
+    subgraph ext["External Identity"]
+        GH["GitHub\nfmfi-dai-gpu-servers"]
+    end
 
-    group kc(cloud)[Keycloak — compute realm]
-    service kc_svc(server)[Keycloak 26.5<br/>auth.c.dai.fmph.uniba.sk] in kc
-    service pg(database)[PostgreSQL] in kc
+    subgraph kc["Keycloak - compute realm"]
+        KC["Keycloak 26.5\nauth.c.dai.fmph.uniba.sk"]
+        PG["PostgreSQL"]
+    end
 
-    group clients(cloud)[OIDC Clients]
-    service jh(server)[JupyterHub] in clients
-    service ml(server)[MLflow] in clients
-    service ray(server)[Ray Dashboard<br/>oauth2-proxy] in clients
-    service ray_cli(server)[Ray CLI<br/>Device Auth] in clients
-    service sw(server)[SeaweedFS S3<br/>STS] in clients
-    service dd(server)[Datasets<br/>Dashboard] in clients
+    subgraph clients["OIDC Clients"]
+        JH["JupyterHub"]
+        ML["MLflow"]
+        RAY["Ray Dashboard\noauth2-proxy"]
+        RCLI["Ray CLI\nDevice Auth"]
+        SW["SeaweedFS S3\nSTS"]
+        DD["Datasets\nDashboard"]
+    end
 
-    github:B --> T:kc_svc
-    kc_svc:L --> R:pg
-    kc_svc:R --> L:jh
-    kc_svc:R --> L:ml
-    kc_svc:R --> L:ray
-    kc_svc:R --> L:ray_cli
-    kc_svc:R --> L:sw
-    kc_svc:R --> L:dd
+    GH --> KC
+    KC --> PG
+    KC --> JH
+    KC --> ML
+    KC --> RAY
+    KC --> RCLI
+    KC --> SW
+    KC --> DD
 ```
 
 ## OIDC Client Details
@@ -47,23 +50,23 @@ architecture-beta
 ```mermaid
 sequenceDiagram
     participant U as User Browser
-    participant S as Service (e.g. JupyterHub)
+    participant S as Service
     participant K as Keycloak
     participant G as GitHub
 
     U->>S: Access service URL
-    S->>K: Redirect to /auth (OIDC authorize)
+    S->>K: Redirect to OIDC authorize
     K->>U: Show login page
-    U->>K: Click "Sign in with GitHub"
+    U->>K: Click Sign in with GitHub
     K->>G: Redirect to GitHub OAuth
     G->>K: Callback with auth code
     K->>G: Exchange for GitHub token
     G->>K: Return user info + orgs
-    K->>K: Verify fmfi-dai-gpu-servers membership
+    K->>K: Verify org membership
     K->>S: Callback with OIDC tokens
     S->>K: Exchange code for tokens
     K->>S: Return ID token + access token
-    S->>U: Session established (cookie)
+    S->>U: Session established
 ```
 
 ## Ray CLI Auth Flow (Device Authorization Grant)
@@ -74,16 +77,16 @@ sequenceDiagram
     participant K as Keycloak
     participant U as User Browser
 
-    CLI->>K: POST /device (client_id=ray-cli)
+    CLI->>K: POST /device
     K->>CLI: device_code + verification_uri
     CLI->>U: Print URL + code
     U->>K: Open URL, enter code, approve
     loop Polling
-        CLI->>K: POST /token (device_code)
+        CLI->>K: POST /token
         K-->>CLI: authorization_pending
     end
     U->>K: Complete approval
-    CLI->>K: POST /token (device_code)
+    CLI->>K: POST /token
     K->>CLI: access_token + refresh_token
     CLI->>CLI: Set RAY_AUTH_TOKEN
 ```
@@ -99,5 +102,5 @@ sequenceDiagram
 ## RBAC Mapping
 
 - Keycloak groups are mapped to service roles via the `groups` OIDC claim
-- Each service maps groups to internal roles (e.g., MLflow maps `mlflow-admin` → admin)
+- Each service maps groups to internal roles (e.g., MLflow maps `mlflow-admin` to admin)
 - GitHub org membership is the root identity check, enforced at Keycloak level

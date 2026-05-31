@@ -5,48 +5,54 @@ The platform is a GPU-accelerated ML/AI environment running on a 4-node K3s Kube
 ## High-Level Architecture
 
 ```mermaid
-architecture-beta
-    group users(cloud)[Users]
-    service developer(user)[Developer] in users
+flowchart TB
+    subgraph users["Users"]
+        Developer["Developer"]
+    end
 
-    group ingress(cloud)[Ingress / TLS]
-    service traefik(server)[Traefik v3] in ingress
+    subgraph ingress["Ingress / TLS"]
+        Traefik["Traefik v3"]
+    end
 
-    group identity(cloud)[Identity]
-    service keycloak(server)[Keycloak] in identity
+    subgraph identity["Identity"]
+        Keycloak["Keycloak"]
+    end
 
-    group platform(cloud)[Platform Services]
-    service harbor(database)[Harbor Registry] in platform
-    service seaweedfs(disk)[SeaweedFS S3] in platform
+    subgraph platform["Platform Services"]
+        Harbor["Harbor Registry"]
+        SeaweedFS["SeaweedFS S3"]
+    end
 
-    group ml(cloud)[ML Platform]
-    service jupyterhub(server)[JupyterHub] in ml
-    service mlflow(server)[MLflow] in ml
-    service ray(server)[Kube-Ray] in ml
+    subgraph ml["ML Platform"]
+        JupyterHub["JupyterHub"]
+        MLflow["MLflow"]
+        Ray["Kube-Ray"]
+    end
 
-    group gpu(cloud)[GPU Layer]
-    service volcano(server)[Volcano vGPU] in gpu
+    subgraph gpu["GPU Layer"]
+        Volcano["Volcano vGPU"]
+    end
 
-    developer:R --> L:traefik
-    traefik:R --> L:jupyterhub
-    traefik:R --> L:mlflow
-    traefik:R --> L:ray
-    traefik:B --> T:harbor
-    traefik:B --> T:keycloak
+    Developer --> Traefik
+    Traefik --> JupyterHub
+    Traefik --> MLflow
+    Traefik --> Ray
+    Traefik --> Harbor
+    Traefik --> Keycloak
 
-    keycloak:R --> L:jupyterhub
-    keycloak:R --> L:mlflow
-    keycloak:R --> L:ray
-    keycloak:B --> T:seaweedfs
+    Keycloak --> JupyterHub
+    Keycloak --> MLflow
+    Keycloak --> Ray
+    Keycloak --> SeaweedFS
 
-    seaweedfs:R --> L:harbor
-    seaweedfs:B --> L:jupyterhub
+    SeaweedFS --> Harbor
+    SeaweedFS --> JupyterHub
 
-    volcano:T --> B:ray
-    volcano:T --> B:jupyterhub
+    Volcano --> Ray
+    Volcano --> JupyterHub
 
-    harbor:B --> T:ray
-    harbor:B --> T:mlflow
+    Harbor --> Ray
+    Harbor --> MLflow
 ```
 
 ## Service Dependency Graph
@@ -54,20 +60,20 @@ architecture-beta
 ```mermaid
 flowchart LR
     subgraph infra["Infrastructure Layer"]
-        T[Traefik<br/>Ingress/TLS]
-        K[Keycloak<br/>OIDC Auth]
-        SW[SeaweedFS<br/>Storage S3/CSI]
-        H[Harbor<br/>Container Registry]
+        T["Traefik - Ingress/TLS"]
+        K["Keycloak - OIDC Auth"]
+        SW["SeaweedFS - Storage S3/CSI"]
+        H["Harbor - Container Registry"]
     end
 
     subgraph scheduling["Scheduling Layer"]
-        V[Volcano<br/>Batch/vGPU Scheduler]
+        V["Volcano - Batch/vGPU Scheduler"]
     end
 
     subgraph ml["ML/AI Services"]
-        JH[JupyterHub<br/>Notebooks]
-        ML[MLflow<br/>Experiment Tracking]
-        RC[Ray Cluster<br/>Distributed Compute]
+        JH["JupyterHub - Notebooks"]
+        ML["MLflow - Experiment Tracking"]
+        RC["Ray Cluster - Distributed Compute"]
     end
 
     T --> JH & ML & RC & H & K

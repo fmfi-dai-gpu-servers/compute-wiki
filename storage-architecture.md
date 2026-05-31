@@ -5,35 +5,39 @@ Two storage backends serve the cluster: **SeaweedFS** for distributed/object sto
 ## Storage Overview
 
 ```mermaid
-architecture-beta
-    group consumers(cloud)[Storage Consumers]
-    service jh(server)[JupyterHub<br/>User Homes] in consumers
-    service harbor(database)[Harbor<br/>Image Storage] in consumers
-    service mlflow(server)[MLflow<br/>Artifacts] in consumers
-    service dd(server)[Datasets<br/>Dashboard] in consumers
+flowchart TB
+    subgraph consumers["Storage Consumers"]
+        JH["JupyterHub\nUser Homes"]
+        HV["Harbor\nImage Storage"]
+        MLF["MLflow\nArtifacts"]
+        DD["Datasets\nDashboard"]
+    end
 
-    group seaweedfs(cloud)[SeaweedFS — sklad node]
-    service s3(server)[S3 Gateway<br/>:8333] in seaweedfs
-    service filer(server)[Filer<br/>:8888] in seaweedfs
-    service master(server)[Master<br/>:9333] in seaweedfs
-    service volume(disk)[Volume Server<br/>Host Path] in seaweedfs
+    subgraph seaweedfs["SeaweedFS - sklad node"]
+        S3["S3 Gateway :8333"]
+        Filer["Filer :8888"]
+        Master["Master :9333"]
+        Volume["Volume Server\nHost Path"]
+    end
 
-    group csi(cloud)[CSI Driver]
-    service csi_ctrl(server)[CSI Controller] in csi
-    service csi_node(server)[CSI Node Plugin<br/>DaemonSet] in csi
+    subgraph csi["CSI Driver"]
+        CSI_C["CSI Controller"]
+        CSI_N["CSI Node Plugin\nDaemonSet"]
+    end
 
-    group local(cloud)[Local Path Provisioner]
-    service lp(disk)[local-path<br/>controller-1 disk] in local
+    subgraph local["Local Path Provisioner"]
+        LP["local-path\ncontroller-1 disk"]
+    end
 
-    jh:R --> L:csi_node
-    harbor:B --> T:s3
-    mlflow:B --> T:lp
-    dd:B --> T:s3
-    s3:L --> R:filer
-    filer:B --> T:master
-    filer:L --> R:volume
-    csi_ctrl:B --> T:filer
-    csi_node:B --> T:filer
+    JH --> CSI_N
+    HV --> S3
+    MLF --> LP
+    DD --> S3
+    S3 --> Filer
+    Filer --> Master
+    Filer --> Volume
+    CSI_C --> Filer
+    CSI_N --> Filer
 ```
 
 ## Storage Classes
@@ -48,18 +52,18 @@ architecture-beta
 ```mermaid
 flowchart TB
     subgraph ingress["External Access"]
-        S3_Ext["storage.c.dai.fmph.uniba.sk<br/>S3 API"]
-        Dash["datasets.c.dai.fmph.uniba.sk<br/>Dashboard"]
+        S3_Ext["storage.c.dai.fmph.uniba.sk\nS3 API"]
+        Dash["datasets.c.dai.fmph.uniba.sk\nDashboard"]
     end
 
-    subgraph cluster["Kubernetes — seaweedfs namespace"]
-        M["Master (StatefulSet)<br/>Cluster metadata, volume assignment<br/>:9333"]
-        V["Volume (StatefulSet)<br/>Actual file data storage<br/>:8080"]
-        F["Filer (StatefulSet)<br/>Directory abstraction + S3<br/>:8888 / :8333"]
-        A["Admin UI<br/>:23646"]
-        DD["Datasets Dashboard<br/>FastAPI web app"]
+    subgraph cluster["Kubernetes - seaweedfs namespace"]
+        M["Master (StatefulSet)\nCluster metadata, volume assignment\n:9333"]
+        V["Volume (StatefulSet)\nActual file data storage\n:8080"]
+        F["Filer (StatefulSet)\nDirectory abstraction + S3\n:8888 / :8333"]
+        A["Admin UI\n:23646"]
+        DD["Datasets Dashboard\nFastAPI web app"]
         CSIC["CSI Controller"]
-        CSIN["CSI Node Plugin (DaemonSet)<br/>on all 4 nodes"]
+        CSIN["CSI Node Plugin (DaemonSet)\non all 4 nodes"]
     end
 
     subgraph storage["Physical Storage on sklad"]
@@ -101,6 +105,6 @@ flowchart TB
 
 | Bucket | Purpose | Access |
 |--------|---------|--------|
-| `harbor-registry` | Harbor container image storage | Internal (Harbor → SeaweedFS) |
+| `harbor-registry` | Harbor container image storage | Internal (Harbor to SeaweedFS) |
 | `datasets` | Shared dataset storage | Per-user via dashboard |
 | `datasets-<username>` | Per-user dataset bucket (20GB quota) | OIDC STS token exchange |

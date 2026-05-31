@@ -1,29 +1,29 @@
 # GPU Stack
 
-The cluster provides GPU acceleration through a layered stack: NVIDIA drivers → container runtime → Volcano device plugin → vGPU scheduling → ML workloads. A single **NVIDIA TITAN Xp** (12GB VRAM) on `k3s-node-1` is shared among multiple concurrent users.
+The cluster provides GPU acceleration through a layered stack: NVIDIA drivers, container runtime, Volcano device plugin, vGPU scheduling, and ML workloads. A single **NVIDIA TITAN Xp** (12GB VRAM) on `k3s-node-1` is shared among multiple concurrent users.
 
 ## GPU Stack Layers
 
 ```mermaid
 flowchart TB
     subgraph workloads["ML Workloads"]
-        JH_GPU["JupyterHub<br/>GPU Notebook"]
-        RAY_GPU["Ray Workers<br/>GPU Tasks"]
+        JH_GPU["JupyterHub\nGPU Notebook"]
+        RAY_GPU["Ray Workers\nGPU Tasks"]
     end
 
     subgraph scheduling["Scheduling Layer"]
-        V_S["Volcano Scheduler<br/>deviceshare plugin"]
-        V_DP["Volcano Device Plugin<br/>DaemonSet"]
+        V_S["Volcano Scheduler\ndeviceshare plugin"]
+        V_DP["Volcano Device Plugin\nDaemonSet"]
     end
 
     subgraph runtime["Container Runtime"]
         N_RT["NVIDIA RuntimeClass"]
-        CT["containerd + NVIDIA<br/>Container Toolkit"]
+        CT["containerd + NVIDIA\nContainer Toolkit"]
     end
 
     subgraph hardware["Hardware"]
         DRV["NVIDIA Host Drivers"]
-        GPU["NVIDIA TITAN Xp<br/>12GB VRAM"]
+        GPU["NVIDIA TITAN Xp\n12GB VRAM"]
     end
 
     workloads --> scheduling
@@ -42,45 +42,47 @@ flowchart TB
 ## vGPU Architecture
 
 ```mermaid
-architecture-beta
-    group gpu(cloud)[NVIDIA TITAN Xp — 12GB VRAM]
-    service vgpu1(server)[vGPU 1<br/>5 cores / 2.4GB] in gpu
-    service vgpu2(server)[vGPU 2<br/>5 cores / 2.4GB] in gpu
-    service vgpu3(server)[vGPU 3<br/>5 cores / 2.4GB] in gpu
-    service dots(server)[...] in gpu
-    service vgpu25(server)[vGPU 25<br/>max splits] in gpu
+flowchart LR
+    subgraph gpu["NVIDIA TITAN Xp - 12GB VRAM"]
+        vgpu1["vGPU 1\n5 cores / 2.4GB"]
+        vgpu2["vGPU 2\n5 cores / 2.4GB"]
+        vgpu3["vGPU 3\n5 cores / 2.4GB"]
+        dots["..."]
+        vgpu25["vGPU N\nmax 25 splits"]
+    end
 
-    group consumers(cloud)[Consumers]
-    service jh(server)[Jupyter<br/>GPU Notebook] in consumers
-    service ray(server)[Ray<br/>GPU Worker] in consumers
+    subgraph consumers["Consumers"]
+        JH["Jupyter\nGPU Notebook"]
+        RAY["Ray\nGPU Worker"]
+    end
 
-    jh:R --> L:vgpu1
-    ray:R --> L:vgpu2
-    ray:R --> L:vgpu3
+    JH --> vgpu1
+    RAY --> vgpu2
+    RAY --> vgpu3
 ```
 
 ## Scheduling Flow
 
 ```mermaid
 sequenceDiagram
-    participant User as User (JupyterHub/Ray)
+    participant User as User
     participant K8s as Kubernetes API
     participant V as Volcano Scheduler
     participant DP as Device Plugin
     participant GPU as Physical GPU
 
     User->>K8s: Submit pod with vGPU requests
-    Note over K8s: volcano.sh/vgpu-number: 1<br/>volcano.sh/vgpu-cores: 5<br/>volcano.sh/vgpu-memory: 2400<br/>runtimeClassName: nvidia
+    Note over K8s: volcano.sh/vgpu-number: 1, vgpu-cores: 5, vgpu-memory: 2400, runtimeClassName: nvidia
     K8s->>V: Schedule via Volcano
     V->>DP: Check available vGPU resources
     DP->>GPU: Query GPU memory/compute
     GPU->>DP: Report available resources
     DP->>V: Report allocatable vGPUs
-    V->>V: deviceshare plugin: allocate vGPU<br/>(binpack policy)
+    V->>V: deviceshare: allocate vGPU (binpack)
     V->>K8s: Pod scheduled on k3s-node-1
     K8s->>DP: Create container with vGPU allocation
     DP->>GPU: Partition GPU memory/compute
-    Note over DP: hami-core mode:<br/>Memory isolation + compute percentage
+    Note over DP: hami-core mode: Memory isolation + compute percentage
 ```
 
 ## vGPU Resources
@@ -109,9 +111,9 @@ Custom resources used in pod specs:
 
 Volcano uses these scheduling plugins in order:
 
-1. **enqueue** — Queue management
-2. **allocate** — Main allocation (deviceshare for vGPU)
-3. **backfill** — Fill gaps with lower-priority jobs
+1. **enqueue** -- Queue management
+2. **allocate** -- Main allocation (deviceshare for vGPU)
+3. **backfill** -- Fill gaps with lower-priority jobs
 
 The `deviceshare` plugin uses a **binpack** policy to pack vGPU workloads efficiently.
 

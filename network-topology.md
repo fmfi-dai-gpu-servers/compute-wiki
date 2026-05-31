@@ -5,26 +5,28 @@
 Users connect to the cluster through SSH tunnels. There is no VPN; all remote access is via SSH port forwarding to the K3s API server.
 
 ```mermaid
-architecture-beta
-    group external(cloud)[Developer Machine]
-    service laptop(internet)[Workstation] in external
+flowchart LR
+    subgraph external["Developer Machine"]
+        Laptop["Workstation"]
+    end
 
-    group tunnel(cloud)[SSH Tunnel]
-    service ssh(server)[SSH :6443] in tunnel
+    subgraph tunnel["SSH Tunnel"]
+        SSH["SSH port-forward :6443"]
+    end
 
-    group cluster(cloud)[K3s Cluster]
-    service api(server)[K3s API<br/>10.89.100.8:6443] in cluster
-    service traefik(server)[Traefik<br/>:80/:443] in cluster
+    subgraph cluster["K3s Cluster"]
+        API["K3s API - 10.89.100.8:6443"]
+        Traefik["Traefik - :80/:443"]
+    end
 
-    group dns(cloud)[DNS / TLS]
-    service wildcard(internet)[*.c.dai.fmph.uniba.sk] in dns
-    service le(server)[Let's Encrypt] in dns
+    subgraph dns["DNS / TLS"]
+        Wildcard["*.c.dai.fmph.uniba.sk"]
+        LE["Let's Encrypt"]
+    end
 
-    laptop:R --> L:ssh
-    ssh:R --> L:api
-    api:R --> L:traefik
-    wildcard:L --> R:traefik
-    traefik:T --> B:le
+    Laptop --> SSH --> API --> Traefik
+    Wildcard --> Traefik
+    Traefik --> LE
 ```
 
 ## SSH Tunnel Setup
@@ -42,24 +44,23 @@ The kubeconfig (`~/.kube/fmfi.yaml`) points to `localhost:6443`, which forwards 
 ```mermaid
 flowchart TB
     subgraph cluster["K3s Cluster"]
-        direction TB
-        subgraph pods["Pod Network — 172.16.0.0/16"]
-            P1[Pods on controller-1<br/>172.16.0.x]
-            P2[Pods on k3s-node-1<br/>172.16.1.x]
-            P3[Pods on pocitadlo<br/>172.16.2.x]
-            P4[Pods on sklad<br/>172.16.3.x]
+        subgraph pods["Pod Network - 172.16.0.0/16"]
+            P1["Pods on controller-1 - 172.16.0.x"]
+            P2["Pods on k3s-node-1 - 172.16.1.x"]
+            P3["Pods on pocitadlo - 172.16.2.x"]
+            P4["Pods on sklad - 172.16.3.x"]
         end
 
-        subgraph svcs["Service Network — 172.17.0.0/16"]
-            S1[kube-dns: 172.17.0.10]
-            S2[kubernetes API: 172.17.0.1]
-            S3[Service ClusterIPs]
+        subgraph svcs["Service Network - 172.17.0.0/16"]
+            S1["kube-dns: 172.17.0.10"]
+            S2["kubernetes API: 172.17.0.1"]
+            S3["Service ClusterIPs"]
         end
     end
 
     subgraph external["External"]
-        DNS[*.c.dai.fmph.uniba.sk]
-        Users[Browser / kubectl]
+        DNS["*.c.dai.fmph.uniba.sk"]
+        Users["Browser / kubectl"]
     end
 
     Users -->|SSH tunnel :6443| P1

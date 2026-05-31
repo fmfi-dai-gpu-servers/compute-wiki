@@ -5,43 +5,50 @@ Complete inventory of all deployed services in the K3s cluster.
 ## Service Overview
 
 ```mermaid
-architecture-beta
-    group infra(cloud)[Infrastructure]
-    service traefik(server)[Traefik<br/>Ingress/TLS] in infra
-    service kc(server)[Keycloak<br/>Identity] in infra
-    service harbor(database)[Harbor<br/>Registry] in infra
-    service sw(disk)[SeaweedFS<br/>Storage] in infra
-    service volcano(server)[Volcano<br/>GPU Scheduler] in infra
+flowchart TB
+    subgraph infra["Infrastructure"]
+        Traefik["Traefik - Ingress/TLS"]
+        KC["Keycloak - Identity"]
+        Harbor["Harbor - Registry"]
+        SW["SeaweedFS - Storage"]
+        Volcano["Volcano - GPU Scheduler"]
+    end
 
-    group ml(cloud)[ML/AI Platform]
-    service jhub(server)[JupyterHub<br/>Notebooks] in ml
-    service mlflow(server)[MLflow<br/>Experiments] in ml
-    service ray(server)[Kube-Ray<br/>Distributed Compute] in ml
+    subgraph ml["ML/AI Platform"]
+        JHub["JupyterHub - Notebooks"]
+        MLflow["MLflow - Experiments"]
+        Ray["Kube-Ray - Distributed Compute"]
+    end
 
-    group datasets(cloud)[Data]
-    service dash(server)[Datasets<br/>Dashboard] in datasets
+    subgraph datasets["Data"]
+        Dash["Datasets Dashboard"]
+    end
 
-    traefik:R --> L:jhub
-    traefik:R --> L:mlflow
-    traefik:R --> L:ray
-    traefik:B --> T:kc
-    traefik:B --> T:harbor
-    traefik:B --> T:sw
-    kc:L --> R:jhub
-    kc:L --> R:mlflow
-    kc:L --> R:ray
-    kc:L --> R:dash
-    sw:R --> L:harbor
-    sw:R --> L:jhub
-    volcano:T --> B:jhub
-    volcano:T --> B:ray
-    harbor:T --> B:ray
-    harbor:T --> B:mlflow
+    Traefik --> JHub
+    Traefik --> MLflow
+    Traefik --> Ray
+    Traefik --> KC
+    Traefik --> Harbor
+    Traefik --> SW
+
+    KC --> JHub
+    KC --> MLflow
+    KC --> Ray
+    KC --> Dash
+
+    SW --> Harbor
+    SW --> JHub
+
+    Volcano --> JHub
+    Volcano --> Ray
+
+    Harbor --> Ray
+    Harbor --> MLflow
 ```
 
 ## Service Details
 
-### Traefik — Ingress Controller
+### Traefik -- Ingress Controller
 
 | Field | Value |
 |-------|-------|
@@ -51,10 +58,10 @@ architecture-beta
 | Image | `traefik:v3.6.5` |
 | Node | k3s-controller-1 |
 | TLS | Let's Encrypt (HTTP challenge) |
-| Entrypoints | `web` (80→HTTPS redirect), `websecure` (443), `rayclient` (10001/TCP), `metrics` (9100) |
+| Entrypoints | `web` (80, HTTPS redirect), `websecure` (443), `rayclient` (10001/TCP), `metrics` (9100) |
 | Dashboard Auth | BasicAuth |
 
-### Keycloak — Identity Management
+### Keycloak -- Identity Management
 
 | Field | Value |
 |-------|-------|
@@ -68,7 +75,7 @@ architecture-beta
 | External IdP | GitHub (fmfi-dai-gpu-servers org) |
 | Clients | jupyterhub, mlflow, ray-proxy, ray-cli, seaweedfs-s3, datasets-dashboard |
 
-### Harbor — Container Registry
+### Harbor -- Container Registry
 
 | Field | Value |
 |-------|-------|
@@ -80,7 +87,7 @@ architecture-beta
 | Scanner | Trivy (built-in) |
 | Components | core, portal, registry, jobservice, trivy, database, redis (1 replica each) |
 
-### SeaweedFS — Distributed Storage
+### SeaweedFS -- Distributed Storage
 
 | Field | Value |
 |-------|-------|
@@ -94,9 +101,9 @@ architecture-beta
 | Filer Port | 8888 |
 | Master Port | 9333 |
 | StorageClass | `seaweedfs-storage` (RWX, CSI) |
-| Host Paths | `/mnt/seaweed-data/{master,volume,filer}/` |
+| Host Paths | `/mnt/seaweed-data/master/`, `/mnt/seaweed-data/volume/`, `/mnt/seaweed-data/filer/` |
 
-### JupyterHub — Multi-user Notebooks
+### JupyterHub -- Multi-user Notebooks
 
 | Field | Value |
 |-------|-------|
@@ -110,7 +117,7 @@ architecture-beta
 | Idle Culling | 30min idle, 12h max age |
 | GPU Profiles | Shared CUDA (1 vGPU, 5 cores, 2.4GB via Volcano) |
 
-### MLflow — Experiment Tracking
+### MLflow -- Experiment Tracking
 
 | Field | Value |
 |-------|-------|
@@ -122,9 +129,9 @@ architecture-beta
 | Auth | Keycloak OIDC (client: `mlflow`, mlflow-oidc-auth plugin) |
 | Database | PostgreSQL (local-path PVC, 10Gi) |
 | Artifacts | local-path PVC (10Gi, planned migration to SeaweedFS S3) |
-| CI/CD | GitHub Actions → Harbor |
+| CI/CD | GitHub Actions to Harbor |
 
-### Kube-Ray — Distributed Compute
+### Kube-Ray -- Distributed Compute
 
 | Field | Value |
 |-------|-------|
@@ -135,12 +142,12 @@ architecture-beta
 | Cluster Chart | `kuberay/ray-cluster` v1.6.1 |
 | Ray Version | 2.46.0 |
 | Node | pocitadlo (head, operator), k3s-node-1 (workers) |
-| Auth (Browser) | oauth2-proxy → Keycloak (client: `ray-proxy`) |
-| Auth (CLI) | Device Auth Grant → Keycloak (client: `ray-cli`) |
+| Auth (Browser) | oauth2-proxy to Keycloak (client: `ray-proxy`) |
+| Auth (CLI) | Device Auth Grant to Keycloak (client: `ray-cli`) |
 | GPU | 0-4 workers, 1 vGPU each (Volcano) |
 | Images | From Harbor (mirrored) |
 
-### Volcano — Batch/vGPU Scheduler
+### Volcano -- Batch/vGPU Scheduler
 
 | Field | Value |
 |-------|-------|

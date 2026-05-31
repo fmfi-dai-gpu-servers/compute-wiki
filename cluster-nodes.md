@@ -5,16 +5,17 @@ The K3s cluster consists of 4 nodes, each with a dedicated role. The cluster use
 ## Node Architecture
 
 ```mermaid
-architecture-beta
-    group cluster(cloud)[K3s Cluster — v1.34]
-    service ctrl(server)[k3s-controller-1<br/>Control Plane<br/>10.89.100.8] in cluster
-    service gpu(server)[k3s-node-1<br/>GPU Node<br/>10.89.100.32] in cluster
-    service svc(server)[pocitadlo<br/>Service Node<br/>158.195.89.102] in cluster
-    service stor(disk)[sklad<br/>Storage Node<br/>10.89.100.10] in cluster
+flowchart LR
+    subgraph cluster["K3s Cluster - v1.34"]
+        CTRL["k3s-controller-1\nControl Plane\n10.89.100.8"]
+        GPU["k3s-node-1\nGPU Node\n10.89.100.32"]
+        SVC["pocitadlo\nService Node\n158.195.89.102"]
+        STOR["sklad\nStorage Node\n10.89.100.10"]
+    end
 
-    ctrl:R --> L:gpu
-    ctrl:R --> L:svc
-    ctrl:R --> L:stor
+    CTRL --- GPU
+    CTRL --- SVC
+    CTRL --- STOR
 ```
 
 ## Node Details
@@ -32,47 +33,47 @@ architecture-beta
 flowchart TB
     subgraph ctrl["k3s-controller-1 (control-plane)"]
         direction LR
-        T[Traefik]
-        CD[CoreDNS]
-        MS[Metrics Server]
-        LPP[Local-Path Provisioner]
-        CSI_N[SeaweedFS CSI Node]
-        CIP[JupyterHub Image Puller]
+        T["Traefik"]
+        CD["CoreDNS"]
+        MS["Metrics Server"]
+        LPP["Local-Path Provisioner"]
+        CSI_N["SeaweedFS CSI Node"]
+        CIP["JupyterHub Image Puller"]
     end
 
     subgraph gpu_node["k3s-node-1 (gpu)"]
         direction LR
-        VDP[Volcano Device Plugin]
-        CSI_N2[SeaweedFS CSI Node]
-        CIP2[JupyterHub Image Puller]
-        JW[Jupyter User Notebooks]
-        RW[Ray Workers]
-        OAP[OAuth2 Proxy]
+        VDP["Volcano Device Plugin"]
+        CSI_N2["SeaweedFS CSI Node"]
+        CIP2["JupyterHub Image Puller"]
+        JW["Jupyter User Notebooks"]
+        RW["Ray Workers"]
+        OAP["OAuth2 Proxy"]
     end
 
     subgraph svc_node["pocitadlo (service)"]
         direction LR
-        KC[Keycloak]
-        PG_KC[PostgreSQL x2]
-        ML[MLflow]
-        HUB[JupyterHub Hub + Proxy]
-        KRO[KubeRay Operator]
-        RH[Ray Head]
-        HV[Harbor all components]
-        VS[Volcano Scheduler]
-        VA[Volcano Admission]
-        VC[Volcano Controller]
-        DD[Datasets Dashboard]
-        CSI_C[SeaweedFS CSI Controller]
+        KC["Keycloak"]
+        PG_KC["PostgreSQL x2"]
+        ML["MLflow"]
+        HUB["JupyterHub Hub + Proxy"]
+        KRO["KubeRay Operator"]
+        RH["Ray Head"]
+        HV["Harbor all components"]
+        VS["Volcano Scheduler"]
+        VA["Volcano Admission"]
+        VC["Volcano Controller"]
+        DD["Datasets Dashboard"]
+        CSI_C["SeaweedFS CSI Controller"]
     end
 
     subgraph stor_node["sklad (storage)"]
         direction LR
-        SW_M[SeaweedFS Master]
-        SW_V[SeaweedFS Volume]
-        SW_F[SeaweedFS Filer + S3]
-        SW_A[SeaweedFS Admin]
-        CSI_M[SeaweedFS CSI Mount]
+        SW_M["SeaweedFS Master"]
+        SW_V["SeaweedFS Volume"]
+        SW_F["SeaweedFS Filer + S3"]
+        SW_A["SeaweedFS Admin"]
+        CSI_M["SeaweedFS CSI Mount"]
     end
 ```
 
