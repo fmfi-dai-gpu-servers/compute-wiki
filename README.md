@@ -6,6 +6,7 @@ Architecture and infrastructure documentation for the GPU-accelerated ML platfor
 
 | Page | Description |
 |------|-------------|
+| **[User Guide](user-guide.md)** | **End-user documentation: how to access and use all services** |
 | [Architecture Overview](architecture-overview.md) | Big-picture service architecture and data flow |
 | [Network Topology](network-topology.md) | Physical network, SSH access, cluster CIDRs, DNS |
 | [Cluster Nodes](cluster-nodes.md) | K3s node roles, resources, and pod placement |
