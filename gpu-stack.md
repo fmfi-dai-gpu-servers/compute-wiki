@@ -1,6 +1,6 @@
 # GPU Stack
 
-The cluster provides GPU acceleration through a layered stack: NVIDIA drivers, container runtime, Volcano device plugin, vGPU scheduling, and ML workloads. A single **NVIDIA TITAN Xp** (12GB VRAM) on `k3s-node-1` is shared among multiple concurrent users.
+The cluster provides GPU acceleration through a layered stack: NVIDIA drivers, container runtime, Volcano device plugin, vGPU scheduling, and ML workloads. Three GPUs are schedulable — **2× NVIDIA RTX 5090** (32GB, `k3s-node-02/03`) and **1× NVIDIA TITAN V** (16GB, `k3s-node-1`) — each shared among multiple concurrent users via vGPU slicing. A fourth GPU (TITAN Xp) is permanently masked for CUDA-architecture reasons; see [gpu-cuda-compatibility.md](gpu-cuda-compatibility.md).
 
 ## GPU Stack Layers
 
@@ -23,7 +23,7 @@ flowchart TB
 
     subgraph hardware["Hardware"]
         DRV["NVIDIA Host Drivers"]
-        GPU["NVIDIA TITAN Xp\n12GB VRAM"]
+        GPU["3 schedulable GPUs\n2× RTX 5090 (sm_120)\n1× TITAN V (sm_70)"]
     end
 
     workloads --> scheduling
@@ -43,12 +43,19 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    subgraph gpu["NVIDIA TITAN Xp - 12GB VRAM"]
+    subgraph gpu5["k3s-node-02/03 - RTX 5090 32GB"]
         vgpu1["vGPU 1\n5 cores / 2.4GB"]
         vgpu2["vGPU 2\n5 cores / 2.4GB"]
-        vgpu3["vGPU 3\n5 cores / 2.4GB"]
-        dots["..."]
-        vgpu25["vGPU N\nmax 25 splits"]
+        dots5["..."]
+        vgpu25a["vGPU N\nmax 25 splits"]
+    end
+    subgraph gpuV["k3s-node-1 - TITAN V 16GB (jupyter only)"]
+        vgV1["vGPU 1"]
+        dotsV["..."]
+        vgV25["max 25 splits"]
+    end
+    subgraph xpmask["k3s-node-1 - TITAN Xp - MASKED"]
+        XM["not registered with hami\n(pci-stub at boot)"]
     end
 
     subgraph consumers["Consumers"]
@@ -58,7 +65,9 @@ flowchart LR
 
     JH --> vgpu1
     RAY --> vgpu2
-    RAY --> vgpu3
+    RAY --> vgV1
+
+
 ```
 
 ## Scheduling Flow
@@ -79,7 +88,7 @@ sequenceDiagram
     GPU->>DP: Report available resources
     DP->>V: Report allocatable vGPUs
     V->>V: deviceshare: allocate vGPU (binpack)
-    V->>K8s: Pod scheduled on k3s-node-1
+    V->>K8s: Pod scheduled on a GPU node (5090s via accelerator=nvidia-gpu, TITAN V via gpu-node=true)
     K8s->>DP: Create container with vGPU allocation
     DP->>GPU: Partition GPU memory/compute
     Note over DP: hami-core mode: Memory isolation + compute percentage
@@ -101,11 +110,13 @@ Custom resources used in pod specs:
 | Parameter | Value |
 |-----------|-------|
 | Device split count | 25 (max vGPUs per GPU) |
-| Device memory scaling | 1.0 |
 | Operating mode | `hami-core` |
 | Runtime class | `nvidia` |
 | Device plugin image | `projecthami/volcano-vgpu-device-plugin:v1.11.0` |
 | Volcano version | v1.13.1 |
+| Platform CUDA line | cu128 (torch 2.8 on ray workers, torch 2.9 on jupyter) — covers sm_70…sm_120; see [gpu-cuda-compatibility.md](gpu-cuda-compatibility.md) |
+| Ray worker nodes | `k3s-node-02/03` only (`accelerator=nvidia-gpu`) |
+| Jupyter GPU nodes | `k3s-node-1/02/03` (`gpu-node=true`) |
 
 ## Scheduler Config
 

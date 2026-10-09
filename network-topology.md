@@ -87,6 +87,14 @@ flowchart TB
 | 8472 | UDP | VXLAN overlay network |
 | 30000-32767 | TCP | NodePort range |
 | 10001 | TCP | Ray Client (TCP IngressRoute) |
+| 8333 | TCP | SeaweedFS S3 gateway (sklad; from `10.89.100.0/24` only) |
+| 8888 | TCP | SeaweedFS filer (sklad; from `10.89.100.0/24` only) |
+| 9333 | TCP | SeaweedFS master (sklad; from `10.89.100.0/24` only) |
+
+The three SeaweedFS ports are host-level diagnostics access from the node subnet
+(pods reach S3 through the ClusterIP service over VXLAN). They are applied by
+`ansible-k3s-setup/storage-networking.yml`, together with the CoreDNS
+`NodeHosts` split-DNS entries.
 
 ## Domain Routing
 

@@ -139,10 +139,10 @@ When your notebook is culled, your files are preserved — only the running proc
 
 When you select the **Shared CUDA notebook** profile:
 
-- You get access to a **shared NVIDIA TITAN Xp GPU**
+- You get a slice of a shared GPU — **RTX 5090 (32GB)** on `k3s-node-02/03` or **TITAN V (16GB)** on `k3s-node-1`, wherever capacity is free
 - Your allocation: **~2.4 GB VRAM** and **~20% of GPU compute**
 - The GPU is time-sliced among users, so performance varies with load
-- The image comes with **CUDA 12.6** and common ML libraries pre-installed
+- The image ships **CUDA 12.8+ and PyTorch 2.9** pre-installed, compiled for every GPU in the cluster
 
 **Check GPU availability in your notebook:**
 
@@ -156,7 +156,7 @@ print(f"GPU memory: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB
 
 ### Tips
 
-- **Pre-installed packages**: CPU images use `jupyter/base-notebook` (minimal). The GPU image is `cschranz/gpu-jupyter:v1.9_cuda-12.6_ubuntu-24.04_slim` which includes PyTorch, TensorFlow, and common data science libraries.
+- **Pre-installed packages**: CPU images use `jupyter/base-notebook` (minimal). The GPU image is `cschranz/gpu-jupyter:v1.10_cuda-12.9_ubuntu-24.04_slim` (via the Harbor mirror) which includes PyTorch 2.9, TensorFlow, and common data science libraries.
 - **Install packages**: Use `pip install --user <package>` to install additional packages. They persist in your home directory.
 - **Large files**: Store datasets in your S3 bucket (see [Datasets & Storage](#datasets--storage)) rather than in your notebook home to save space.
 
@@ -447,7 +447,7 @@ ray job submit --address https://ray.c.dai.fmph.uniba.sk -- python sample_gpu_jo
 
 - **Worker startup time**: The first job after idle may take 30-60 seconds while workers spin up
 - **GPU task sizing**: Each worker has 1 vGPU. Use `num_gpus=0.5` to run 2 tasks per worker
-- **Images**: Workers use `ray-ml:2.46.0` with PyTorch and CUDA pre-installed (Python 3.11)
+- **Images**: Workers use the platform image `ray-worker:2.46.0-cu128-v1` with PyTorch 2.8 and CUDA 12.8 pre-installed (Python 3.11). The whole GPU pool now speaks one CUDA line: cu128 covers TITAN V (sm_70) and RTX 5090 (sm_120). The TITAN Xp (Pascal, sm_61) is **not schedulable** — CUDA 12.8+ dropped Pascal and no official torch build spans Pascal↔Blackwell, so it is masked from the cluster. Do **not** install cu126 torch overrides via `runtime_env` — a cu126 venv works on no current GPU (cu126 lacks the 5090 kernels) and hides the platform torch.
 - **Ray version**: 2.46.0
 
 ---

@@ -1,6 +1,6 @@
 # Cluster Nodes
 
-The K3s cluster consists of 4 nodes, each with a dedicated role. The cluster uses SQLite datastore (single server mode) with custom CIDRs.
+The K3s cluster consists of 6 nodes, each with a dedicated role. The cluster uses SQLite datastore (single server mode) with custom CIDRs.
 
 ## Node Architecture
 
@@ -8,24 +8,30 @@ The K3s cluster consists of 4 nodes, each with a dedicated role. The cluster use
 flowchart LR
     subgraph cluster["K3s Cluster - v1.34"]
         CTRL["k3s-controller-1\nControl Plane\n10.89.100.8"]
-        GPU["k3s-node-1\nGPU Node\n10.89.100.32"]
+        GPU1["k3s-node-1\nGPU Node (Titans)\n10.89.100.32"]
+        GPU2["k3s-node-02\nGPU Node (RTX 5090)\n10.89.100.33"]
+        GPU3["k3s-node-03\nGPU Node (RTX 5090)\n10.89.100.34"]
         SVC["pocitadlo\nService Node\n158.195.89.102"]
         STOR["sklad\nStorage Node\n10.89.100.10"]
     end
 
-    CTRL --- GPU
+    CTRL --- GPU1
+    CTRL --- GPU2
+    CTRL --- GPU3
     CTRL --- SVC
     CTRL --- STOR
 ```
 
 ## Node Details
 
-| Node | Role | IP | OS | K3s Version | CPU | Memory |
-|------|------|----|----|-------------|-----|--------|
-| k3s-controller-1 | `control-plane` | 10.89.100.8 | Ubuntu 24.04.3 | v1.34.3 | 45m used | 2.2Gi / 27% |
-| k3s-node-1 | `gpu` | 10.89.100.32 | Ubuntu 24.04.3 | v1.34.3 | 56m used | 1.2Gi / 5% |
-| pocitadlo | `service` | 158.195.89.102 | Ubuntu 24.04.4 | v1.34.6 | 483m used | 7.3Gi / 2% |
-| sklad | `storage` | 10.89.100.10 | Ubuntu 24.04.4 | v1.34.6 | 55m used | 1.4Gi / 18% |
+| Node | Role | IP | OS | GPU | Notes |
+|------|------|----|----|-----|-------|
+| k3s-controller-1 | `control-plane` | 10.89.100.8 | Ubuntu 24.04.3 | — | k3s data on root LV |
+| k3s-node-1 | `gpu` | 10.89.100.32 | Ubuntu 24.04.3 | TITAN V (schedulable) + TITAN Xp (masked) | jupyter pool only |
+| k3s-node-02 | `gpu` | 10.89.100.33 | Ubuntu 24.04.3 | RTX 5090 32G | k3s data on 7.3T `k3s-data` LV |
+| k3s-node-03 | `gpu` | 10.89.100.34 | Ubuntu 24.04.3 | RTX 5090 32G | k3s data on 7.3T `k3s-data` LV |
+| pocitadlo | `service` | 158.195.89.102 | Ubuntu 24.04.4 | — | holds all local-path PVs |
+| sklad | `storage` | 10.89.100.10 | Ubuntu 24.04.4 | — | SeaweedFS; 62G root — never pull GPU images |
 
 ## What Runs Where
 
@@ -38,17 +44,21 @@ flowchart TB
         MS["Metrics Server"]
         LPP["Local-Path Provisioner"]
         CSI_N["SeaweedFS CSI Node"]
-        CIP["JupyterHub Image Puller"]
     end
 
-    subgraph gpu_node["k3s-node-1 (gpu)"]
+    subgraph gpu_node1["k3s-node-1 (gpu — jupyter pool)"]
         direction LR
         VDP["Volcano Device Plugin"]
+        CSI_N1["SeaweedFS CSI Node"]
+        JW1["Jupyter User Notebooks\n(TITAN V slices)"]
+    end
+
+    subgraph gpu_node23["k3s-node-02/03 (gpu — ray + jupyter)"]
+        direction LR
+        VDP2["Volcano Device Plugin"]
         CSI_N2["SeaweedFS CSI Node"]
-        CIP2["JupyterHub Image Puller"]
-        JW["Jupyter User Notebooks"]
+        JW2["Jupyter Notebooks\n(RTX 5090 slices)"]
         RW["Ray Workers"]
-        OAP["OAuth2 Proxy"]
     end
 
     subgraph svc_node["pocitadlo (service)"]
@@ -82,10 +92,11 @@ flowchart TB
 | Label | Applied To | Used By |
 |-------|-----------|---------|
 | `node-role.kubernetes.io/control-plane` | k3s-controller-1 | Traefik placement |
-| `node-role.kubernetes.io/gpu` | k3s-node-1 | GPU workloads, Volcano device plugin |
+| `node-role.kubernetes.io/gpu` | k3s-node-1, -02, -03 | GPU workloads, Volcano device plugin |
 | `node-role.kubernetes.io/service` | pocitadlo | Harbor, platform services |
 | `node-role.kubernetes.io/storage` | sklad | SeaweedFS components |
-| `gpu-node: "true"` | k3s-node-1 | Volcano device plugin DaemonSet |
+| `gpu-node: "true"` | k3s-node-1, -02, -03 | Volcano device plugin DaemonSet, jupyter GPU pool |
+| `accelerator: nvidia-gpu` | k3s-node-02, -03 only | ray workers, future 5090-only workloads |
 | `sw-backend: "true"` | sklad | SeaweedFS master/filer |
 | `sw-volume: "true"` | sklad | SeaweedFS volume server |
 
@@ -99,17 +110,22 @@ controller:
     master:
       ansible_host: fmfi-k3s-ctl
       ansible_user: ubuntu
-
 node:
   hosts:
-    worker1:
+    worker1:                      # k3s-node-1, Titans
       ansible_host: fmfi-k3s-n1
       ansible_user: ubuntu
-    k3s-node-2:
+    k3s-node-2:                   # pocitadlo, service node
       ansible_host: pocitadlo
       ansible_user: filip
     sklad:
       ansible_host: sklad
       ansible_user: filip
       k3s_node_ip: 10.89.100.10
+    worker2:                      # k3s-node-02, RTX 5090
+      ansible_host: fmfi-k3s-n2
+      ansible_user: spravovatel
+    worker3:                      # k3s-node-03, RTX 5090
+      ansible_host: fmfi-k3s-n3
+      ansible_user: spravovatel
 ```

@@ -63,7 +63,7 @@ flowchart TB
         A["Admin UI\n:23646"]
         DD["Datasets Dashboard\nFastAPI web app"]
         CSIC["CSI Controller"]
-        CSIN["CSI Node Plugin (DaemonSet)\non all 4 nodes"]
+        CSIN["CSI Node Plugin (DaemonSet)\non all 6 nodes"]
     end
 
     subgraph storage["Physical Storage on sklad"]

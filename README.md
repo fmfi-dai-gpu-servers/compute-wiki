@@ -13,4 +13,5 @@ Architecture and infrastructure documentation for the GPU-accelerated ML platfor
 | [Storage Architecture](storage-architecture.md) | SeaweedFS, CSI driver, storage classes, PVCs |
 | [Authentication Flow](authentication-flow.md) | Keycloak OIDC, registered clients, auth per service |
 | [GPU Stack](gpu-stack.md) | NVIDIA runtime, Volcano vGPU, device sharing |
+| [GPU CUDA Compatibility](gpu-cuda-compatibility.md) | CUDA arch matrix, cu128 platform decision, TITAN Xp masking runbook |
 | [Service Map](service-map.md) | Per-service details: domains, images, Helm charts |
