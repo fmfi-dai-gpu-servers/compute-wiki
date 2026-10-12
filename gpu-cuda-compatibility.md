@@ -1,8 +1,9 @@
 # GPU Architecture & CUDA Compatibility
 
 Detailed record of the 2026-10 GPU platform consolidation: why "the CUDA
-image" failed on half the cluster, the fix (cu128 everywhere + TITAN Xp
-masked), the exact mechanisms applied, and how to verify / reverse each
+:image" failed on half the cluster, the fix (cu128 everywhere + TITAN Xp
+masked — the Xp was later removed from the VM and the masking reverted,
+2026-10-12), the exact mechanisms applied, and how to verify / reverse each
 piece. For the general stack layers see [gpu-stack.md](gpu-stack.md).
 
 ## Hardware Inventory
@@ -12,7 +13,7 @@ piece. For the general stack layers see [gpu-stack.md](gpu-stack.md).
 | k3s-node-02 | NVIDIA RTX 5090 | sm_120 (Blackwell) | 32G | 580.173.02 | `accelerator=nvidia-gpu` (ray), `gpu-node=true` (jupyter) |
 | k3s-node-03 | NVIDIA RTX 5090 | sm_120 (Blackwell) | 32G | 580.173.02 | same |
 | k3s-node-1 | NVIDIA TITAN V | sm_70 (Volta) | 16G | 580.173.02 | `gpu-node=true` (jupyter only) |
-| k3s-node-1 | NVIDIA TITAN Xp | sm_61 (Pascal) | 12G | — | **masked, not schedulable** |
+| k3s-node-1 | NVIDIA TITAN Xp | sm_61 (Pascal) | 12G | — | removed from the VM 2026-10-12 (previously masked, not schedulable) |
 
 All GPUs are shared through Volcano + hami vGPU (hami-core mode): a pod
 requests `volcano.sh/vgpu-number/-cores/-memory` and gets a fraction of one
@@ -25,7 +26,8 @@ vice versa. Root cause: **two platform images built on different CUDA
 toolkit generations, each supporting a disjoint end of the GPU arch
 spectrum.** Drivers, container toolkit, hami, and storage were all healthy.
 
-Verified behavior matrix (live tests on this cluster, torch `matmul`):
+Verified behavior matrix (live tests on this cluster, torch `matmul`;
+2026-10, while the Xp was still installed):
 
 | torch build | TITAN V sm_70 | TITAN Xp sm_61 | RTX 5090 sm_120 |
 |---|---|---|---|
@@ -39,7 +41,7 @@ predates RTX 5090), cu128 wheels span sm_70–sm_120 (Blackwell yes, Pascal
 no: CUDA 12.8 dropped Pascal support). **No single official build covers
 both sm_61 and sm_120.**
 
-## Decision: standardize on cu128, mask the Xp
+## Decision (2026-10-08): standardize on cu128, mask the Xp
 
 Two options existed:
 
@@ -49,12 +51,14 @@ Two options existed:
    node arch. Doubles image maintenance, users must know which pool they
    landed on; rejected as high-effort/confusing.
 
-The TITAN Xp is not broken hardware — it could be revived anytime by
-un-masking it (see [Reversal](#reversal)) and running a cu126 stack on it
-manually. It is simply impossible to serve one shared CUDA image across
-Pascal and Blackwell simultaneously.
+The TITAN Xp was not broken hardware — while still installed it was masked
+out of scheduling. On 2026-10-12 it was removed from the k3s-node-1 VM
+entirely (host-side passthrough removed) and the masking machinery was
+reverted. If it ever returns it needs a cu126-era stack (see
+[Reversal](#reversal)) — it is simply impossible to serve one shared CUDA
+image across Pascal and Blackwell simultaneously.
 
-## What Changed
+## What Changed — consolidation (2026-10-08/09)
 
 | Component | Before | After |
 |---|---|---|
@@ -67,7 +71,29 @@ Pascal and Blackwell simultaneously.
 
 Deployed: ray helm rev 24 (2026-10-08), jupyterhub helm rev 15 (2026-10-09).
 
+Follow-up on 2026-10-12: the TITAN Xp was removed from the k3s-node-1 VM
+entirely (host-side passthrough removed), so the masking machinery
+documented below was reverted the same day:
+
+| Component | Before | After (2026-10-12) |
+|---|---|---|
+| k3s-node-1 Xp PCI passthrough | present in VM, masked (unbind + pci-stub) | removed from the VM |
+| `/etc/default/grub` | `GRUB_CMDLINE_LINUX_DEFAULT="pci-stub.ids=10de:1b02"` | `""` + `update-grub` |
+| `/etc/initramfs-tools/modules` | `pci-stub` line | removed + `update-initramfs -u -k all` |
+| hami configmap `volcano-vgpu-node-config` | `filterdevices.uuid` = Xp uuid (inert) | `filterdevices` deleted |
+| node-1 hami registration | TITAN V only (12288 MB) | unchanged by the revert |
+
 ## TITAN Xp Masking — Full Mechanism
+
+> **Status 2026-10-12: historical.** The Xp has been removed from the VM
+> (host-side passthrough removed), and all masking mechanisms below were
+> reverted the same day: the runtime unbind/driver_override died with the
+> device, `pci-stub.ids` was dropped from `GRUB_CMDLINE_LINUX_DEFAULT`
+> (+ `update-grub`), `pci-stub` was removed from
+> `/etc/initramfs-tools/modules` (+ `update-initramfs -u -k all`), and the
+> `filterdevices` entry was deleted from configmap
+> `volcano-vgpu-node-config`. Plugin pod restarted afterwards;
+> `Reporting devices` → TITAN V only, node allocatable still 12288.
 
 Requirements: remove the Xp from *scheduling* while keeping the TITAN V
 fully usable on the same node. Attempts, in order:
@@ -97,9 +123,8 @@ Reporting devices GPU-75545d5c-...NVIDIA TITAN V,...:GPU-982f3ee9-...NVIDIA TITA
 and the Volcano scheduler still assigned the Xp to test pods. Conclusion:
 `filterdevices` is non-functional for NVML devices in
 `projecthami/volcano-vgpu-device-plugin:v1.11.0` (operatingmode
-`hami-core`). The uuid entry is left in the configmap — inert, but
-documents intent and will activate if a future hami release fixes the
-filter.
+`hami-core`). The uuid entry was left in the configmap (inert, documenting
+intent) until the Xp left the VM; it was deleted on 2026-10-12.
 
 ### Working mechanism — unbind the Xp from the nvidia driver
 
@@ -124,7 +149,8 @@ Notes from the live run:
   it only re-reads devices at startup:
 
 ```bash
-fk -n volcano-system delete pod -l app=volcano-device-plugin --field-selector spec.nodeName=k3s-node-1
+fk -n volcano-system delete pod -l name=volcano-device-plugin --field-selector spec.nodeName=k3s-node-1
+# NB: label is name= (DS selector, verified 2026-10-12); an app= selector matches nothing
 ```
 
 - Restart any other DaemonSet pod that caches NVML handles if needed.
@@ -171,7 +197,15 @@ nvidia never sees it, NVML/hami expose only the TITAN V. The runtime
 driver_override from the original masking remains set on the device —
 harmless; clear it during a reversal.
 
+Reverted 2026-10-12 when the Xp left the VM: the grub arg was removed
+(`grep -c pci-stub.ids /boot/grub/grub.cfg` → 0), the `pci-stub` line was
+deleted from `/etc/initramfs-tools/modules` and both kernels' initramfs
+rebuilt without it (`lsinitramfs` → 0 matches each; the kernel set is now
+6.8.0-146/138 — the 139/142 kernels referenced above are since gone).
+
 ### Reversal (revive the Xp)
+
+Historical procedure (while the masking was in place, pre-2026-10-12):
 
 ```bash
 # on k3s-node-1, after removing pci-stub.ids from GRUB_CMDLINE_LINUX_DEFAULT + update-grub:
@@ -180,8 +214,33 @@ echo 0000:00:11.0 > /sys/bus/pci/drivers/nvidia/bind           # rebind
 # then restart the volcano device plugin pod on the node
 ```
 
-The Xp then needs workloads with a cu126-era stack (e.g.
+Since 2026-10-12 the Xp is no longer passed through to the k3s-node-1 VM at
+all and the masking is fully reverted (grub, initramfs, configmap). Reviving
+it means re-adding the PCI passthrough on the VM host; on the guest side a
+reboot plus the usual plugin restart/verification (below) suffices. The Xp
+then needs workloads with a cu126-era stack (e.g.
 `gpu-jupyter:v1.9_cuda-12.6`) — see the compatibility matrix above.
+
+### Revert record (2026-10-12)
+
+What was actually found and done when the Xp was removed from the VM:
+
+- Pre-revert state on the node: `/proc/cmdline` still carried
+  `pci-stub.ids=10de:1b02` (booted before the revert; inert — the stub
+  matched no device), `pci_stub` loaded with 0 uses, PCI `0000:00:11.0`
+  absent from sysfs (so the runtime unbind/driver_override needed no
+  clearing), TITAN V `driver_override` = `(null)`.
+- Sweep for other residue was clean: `/etc/modules`, `/etc/modules-load.d/`,
+  `/etc/rc.local`, `/etc/systemd/system/`, `/etc/udev/rules.d/`.
+- Grub + initramfs reverted as listed under
+  [Reboot persistence](#reboot-persistence-grub-pci-stub) above.
+- Configmap cleaned via jq + apply:
+  `jq '.data["config.json"] |= (fromjson | .nodeconfig |= map(del(.filterdevices)) | tostring)'`
+  piped into `fk apply -f -`.
+- Node-1 plugin pod deleted and recreated: fresh pod logged
+  `FilterDevice: <nil>` and `Reporting devices GPU-75545d5c-...NVIDIA TITAN V`
+  only; node-1 `volcano.sh/vgpu-memory` allocatable stayed 12288, node-02/03
+  unchanged at 32607.
 
 ## JupyterHub Rollout Notes (rev 15)
 
@@ -227,9 +286,9 @@ KUBECONFIG and ssh tunnel; plain `helm` with `KUBECONFIG` set dies with
 After any node reboot or hami/plugin change, confirm the GPU surface:
 
 ```bash
-# 1. per-GPU-node registration
+# 1. per-GPU-node registration (find pods: fk -n volcano-system get pods -l name=volcano-device-plugin -o wide)
 fk -n volcano-system logs <plugin-pod> -c volcano-device-plugin | grep "Reporting devices"
-# expect: node-02/03 → one RTX 5090 each; node-1 → TITAN V only
+# expect: node-02/03 → one RTX 5090 each; node-1 → TITAN V only (unchanged by the 2026-10-12 Xp removal)
 
 # 2. node allocatable
 fk get nodes -o custom-columns='NODE:.metadata.name,VGPU-MEM:.status.allocatable.volcano\.sh/vgpu-memory'
