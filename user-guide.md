@@ -28,7 +28,9 @@ This guide covers everything you need to use the GPU-accelerated ML platform at 
 |---------|-----|--------------|
 | JupyterHub | [jhub.c.dai.fmph.uniba.sk](https://jhub.c.dai.fmph.uniba.sk) | Interactive notebooks (CPU & GPU) |
 | MLflow | [mlflow.c.dai.fmph.uniba.sk](https://mlflow.c.dai.fmph.uniba.sk) | Track experiments, metrics, and models |
-| Ray Dashboard | [ray.c.dai.fmph.uniba.sk](https://ray.c.dai.fmph.uniba.sk) | Distributed compute jobs (CPU & GPU) |
+| **Compute Console** | [datasets.c.dai.fmph.uniba.sk/compute](https://datasets.c.dai.fmph.uniba.sk/compute) | Provision & control **your own** Ray cluster |
+| Ray Dashboard (personal) | `ray-<username>.c.dai.fmph.uniba.sk` | Your cluster's native Ray UI |
+| Ray Dashboard (shared) | [ray.c.dai.fmph.uniba.sk](https://ray.c.dai.fmph.uniba.sk) | The shared fallback cluster |
 | Datasets | [datasets.c.dai.fmph.uniba.sk](https://datasets.c.dai.fmph.uniba.sk) | Upload, browse, and manage datasets |
 | S3 Storage | [storage.c.dai.fmph.uniba.sk](https://storage.c.dai.fmph.uniba.sk) | S3-compatible object storage API |
 
@@ -292,7 +294,53 @@ Ray is a framework for running distributed Python applications. Instead of runni
 
 </details>
 
-### Accessing the Dashboard
+### Your Personal Cluster (Default)
+
+Every user gets their **own Ray cluster** (`ray-<username>`, at
+`https://ray-<username>.c.dai.fmph.uniba.sk`) inside their **own Volcano queue**
+(`u-<username>`) with a guaranteed slice of the GPUs. It is created
+automatically the first time you submit a job (the `compute-demo` library calls
+the platform provisioner for you), scales workers 0 → max on demand, and is
+deleted by the idle garbage collector after 24 h of no job activity —
+recreated transparently on your next submit.
+
+The shared cluster below remains available with `RAY_SHARED=1`.
+
+### The Compute Console (Datasets → Compute)
+
+The **Compute tab** of the [datasets dashboard](https://datasets.c.dai.fmph.uniba.sk/compute)
+is the self-service UI for your personal cluster — no CLI needed:
+
+- **Provision / Reconfigure** — CPUs, memory, GPU count, GPU model (from live
+  inventory), sharing mode (fraction of a card vs exact VRAM), and the worker
+  image from the admin-curated catalog (default `torch28-cu128`: PyTorch 2.8 +
+  CUDA 12.8 + mlflow, everything baked in). Re-submitting with new values
+  reconfigures the same cluster in place (workers roll).
+- **Cluster status** — state, dashboard link, desired workers, GPU model,
+  priority bin, current worker image; auto-refreshes. **Stop cluster** tears
+  it down immediately (queue stays; next provision repairs it).
+- **Quota / queue panel** — your CPU / memory / vGPU ceilings vs current
+  allocation.
+- **Jobs** — list with status badges, on-demand logs, and a small submit form
+  (entrypoint, per-job CPUs/GPUs, optional `runtime_env` JSON).
+- **Token panel** — a ~60-minute access token with copy-paste
+  `RAY_ADDRESS` / `RAY_AUTH_TOKEN` snippets for `ray job submit`, an expiry
+  countdown, and **Renew now**. For longer sessions use
+  `ray_auth.py` (device flow, ~3 h tokens) instead.
+
+> **Sizing tip:** the default queue capability is 4.5 CPU / 9.5 Gi / 2 vGPUs
+> and the head pod reserves 1.5 CPU / 2.5 Gi of it. The default worker shape
+> (1.5 CPU / 3.5 Gi / 1 vGPU) fits **exactly two** workers — the intended
+> setup. Requesting fatter workers (e.g. 3 CPU) silently drops you to a
+> single worker because `(4.5 − 1.5) / 3 = 1`; GPUs beyond your worker count
+> are unreachable.
+
+> **Do not ship `torch` via `runtime_env` pip** — a pip venv *hides* the
+> packages baked into the worker image (including the platform's cu128 torch),
+> and jobs that need GPU kernels then fail. Pure-Python extras are fine to
+> pip-install; GPU stacks come from the image catalog only.
+
+### The Shared Cluster Dashboard
 
 Navigate to [ray.c.dai.fmph.uniba.sk](https://ray.c.dai.fmph.uniba.sk) — log in with GitHub SSO. The dashboard lets you:
 - View cluster status and available resources
@@ -302,7 +350,9 @@ Navigate to [ray.c.dai.fmph.uniba.sk](https://ray.c.dai.fmph.uniba.sk) — log i
 
 ### CLI Authentication
 
-For command-line usage, authenticate using the Device Authorization Grant flow:
+Two ways to get `RAY_ADDRESS` / `RAY_AUTH_TOKEN`:
+
+- **Device flow (longer sessions, ~3 h tokens):**
 
 ```bash
 # Get your token (interactive — requires opening a browser URL)
@@ -313,11 +363,17 @@ python ray_auth.py
 eval $(python ray_auth.py)
 ```
 
-After authentication, two environment variables are set:
-- `RAY_ADDRESS=https://ray.c.dai.fmph.uniba.sk`
-- `RAY_AUTH_TOKEN=<your-token>`
+- **Compute Console (quick, ~60 min):** open the
+  [Compute tab](https://datasets.c.dai.fmph.uniba.sk/compute) → Token panel →
+  copy the ready-made `export RAY_ADDRESS=…` / `export RAY_AUTH_TOKEN=…`
+  snippet into your shell. "Renew now" issues a fresh token.
 
-> **Note:** `ray_auth.py` is available in the `services/kube-ray/` directory. Tokens expire — re-run the script when needed.
+Addressing: your personal cluster lives at
+`https://ray-<username>.c.dai.fmph.uniba.sk`; `ray_auth.py` exports that by
+default. Use `RAY_ADDRESS=https://ray.c.dai.fmph.uniba.sk` (or `RAY_SHARED=1`)
+only for the shared cluster.
+
+> **Note:** `ray_auth.py` is available in the `compute-demo` repo and in `services/kube-ray/`. Tokens expire — renew when needed.
 
 ### Submitting Jobs
 
@@ -359,10 +415,14 @@ for job in client.list_jobs():
 #### With pip dependencies
 
 ```bash
-ray job submit --address https://ray.c.dai.fmph.uniba.sk \
-  --runtime-env-json '{"pip": ["torch", "transformers"]}' \
-  -- python train.py
+ray job submit --address https://ray-<username>.c.dai.fmph.uniba.sk \
+  --runtime-env-json '{"pip": ["pandas", "scikit-learn"]}' \
+  -- python my_script.py
 ```
+
+> Pure-Python packages only. Never ship `torch`/CUDA via pip — the venv hides
+> the GPU stack baked into the worker image (see the warning in
+> [The Compute Console](#the-compute-console-datasets--compute)).
 
 ### Connecting from JupyterHub
 
@@ -377,15 +437,14 @@ print(f"Cluster resources: {ray.cluster_resources()}")
 
 ### GPU Workers
 
-The Ray cluster can scale from 0 to **4 GPU workers**, each with:
+Both clusters auto-scale workers from zero when GPU demand appears and shut
+them down after **120 seconds** idle — if nobody is using Ray, no GPU
+resources are consumed.
 
-| Resource | Per Worker |
-|----------|------------|
-| CPU | 1.5 cores |
-| RAM | 3.5 GB |
-| GPU | 1 vGPU (~2.4 GB VRAM, shared) |
-
-Workers **auto-scale**: they spin up when jobs arrive and shut down after **120 seconds** of idle time. If no one is using Ray, no GPU resources are consumed.
+| Cluster | Workers | Per Worker |
+|---------|---------|------------|
+| Personal (default) | 0 → **2** | 1.5 CPU, 3.5 GB RAM, 1 vGPU (shape configurable in the Compute Console within your queue ceiling) |
+| Shared (`RAY_SHARED=1`) | 0 → **4** | 1.5 CPU, 3.5 GB RAM, 1 vGPU (~2.4 GB VRAM, shared) |
 
 ### Sample GPU Job
 
@@ -477,6 +536,8 @@ Navigate to [datasets.c.dai.fmph.uniba.sk](https://datasets.c.dai.fmph.uniba.sk)
 - **Delete** — Remove files and folders
 - **Storage stats** — See your usage, quota, and file count
 - **S3 credentials** — View your access key, secret key, and endpoint
+- **Compute tab** — Provision and control your personal Ray cluster (see
+  [The Compute Console](#the-compute-console-datasets--compute))
 
 Your personal bucket (`datasets-<username>`) is created automatically on first access with **20 GB** of storage. Versioning is enabled — old versions of files are kept for 365 days.
 

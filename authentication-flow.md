@@ -43,7 +43,7 @@ flowchart TB
 | `ray-proxy` | Confidential | Authorization Code + PKCE (S256) | Ray Dashboard (oauth2-proxy) |
 | `ray-cli` | Public | Device Authorization Grant + PKCE | Ray CLI job submission |
 | `seaweedfs-s3` | Confidential | STS Token Exchange | SeaweedFS S3 API |
-| `datasets-dashboard` | Confidential | Authorization Code | Datasets Dashboard (FastAPI) |
+| `datasets-dashboard` | Confidential | Authorization Code (+ refresh) | Datasets Dashboard (FastAPI) — its ~60-min access tokens power the Compute tab's token panel; `aud-ray-proxy` client scope added so the tokens also authenticate against `ray-<user>` hosts and the provisioner |
 
 ## Browser Auth Flow
 

@@ -136,16 +136,20 @@ flowchart TB
 | Field | Value |
 |-------|-------|
 | Namespace | `ray-system` |
-| Dashboard | `ray.c.dai.fmph.uniba.sk` |
-| Client (TCP) | `ray-client.c.dai.fmph.uniba.sk:10001` |
+| Shared Dashboard | `ray.c.dai.fmph.uniba.sk` |
+| Per-user Dashboards | `ray-<username>.c.dai.fmph.uniba.sk` (behind the same forwardAuth) |
+| Client (TCP) | `ray-client.c.dai.fmph.uniba.sk:10001` (shared cluster) |
 | Operator Chart | `kuberay/kuberay-operator` v1.5.1 |
-| Cluster Chart | `kuberay/ray-cluster` v1.6.1 |
+| Cluster Chart | `kuberay/ray-cluster` v1.6.1 (shared) |
+| Provisioner API | `provision.c.dai.fmph.uniba.sk` (`services/ray-provisioner`, image `services/ray-provisioner`) |
+| Provisioner UX | Datasets dashboard **Compute tab** (`datasets.c.dai.fmph.uniba.sk/compute`) |
 | Ray Version | 2.46.0 |
 | Node | pocitadlo (head, operator), k3s-node-1 (workers) |
 | Auth (Browser) | oauth2-proxy to Keycloak (client: `ray-proxy`) |
 | Auth (CLI) | Device Auth Grant to Keycloak (client: `ray-cli`) |
-| GPU | 0-4 workers, 1 vGPU each (Volcano) |
-| Images | From Harbor (mirrored) |
+| Auth (provisioner) | Bearer token verified in-process against realm JWKS |
+| GPU | Shared: 0-4 workers; per-user: 0-2 workers (1 vGPU each, Volcano queue `u-<username>`) |
+| Worker Images | Harbor `services/ray-worker:*` (catalog in `ray-user-quotas` ConfigMap, e.g. `2.46.0-cu128-v1`) |
 
 ### Volcano -- Batch/vGPU Scheduler
 
