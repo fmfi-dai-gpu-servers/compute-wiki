@@ -328,12 +328,13 @@ is the self-service UI for your personal cluster — no CLI needed:
   countdown, and **Renew now**. For longer sessions use
   `ray_auth.py` (device flow, ~3 h tokens) instead.
 
-> **Sizing tip:** the default queue capability is 4.5 CPU / 9.5 Gi / 2 vGPUs
-> and the head pod reserves 1.5 CPU / 2.5 Gi of it. The default worker shape
-> (1.5 CPU / 3.5 Gi / 1 vGPU) fits **exactly two** workers — the intended
-> setup. Requesting fatter workers (e.g. 3 CPU) silently drops you to a
-> single worker because `(4.5 − 1.5) / 3 = 1`; GPUs beyond your worker count
-> are unreachable.
+> **Sizing tip:** the default queue capability is 8 CPU / 16 Gi / 4 vGPUs
+> and the head pod reserves 1.0 CPU / 2.0 Gi of it. The default worker shape
+> (3 CPU / 6 Gi / 1 vGPU) fits **two** workers with room to spare — the
+> intended setup, sized so it also fits the small TITAN V node. Fatter workers
+> buy fewer slots (`max_workers = (8 − 1) / cpus_per_worker`, floor), up to
+> one 7 CPU / 14 Gi worker that can actually feed a whole RTX 5090; GPUs
+> beyond your worker count are unreachable.
 
 > **Do not ship `torch` via `runtime_env` pip** — a pip venv *hides* the
 > packages baked into the worker image (including the platform's cu128 torch),
@@ -443,7 +444,7 @@ resources are consumed.
 
 | Cluster | Workers | Per Worker |
 |---------|---------|------------|
-| Personal (default) | 0 → **2** | 1.5 CPU, 3.5 GB RAM, 1 vGPU (shape configurable in the Compute Console within your queue ceiling) |
+| Personal (default) | 0 → **4** | 3 CPU, 6 GB RAM, 1 vGPU (default shape; configurable in the Compute Console within your queue ceiling — two 3-CPU workers fit by default) |
 | Shared (`RAY_SHARED=1`) | 0 → **4** | 1.5 CPU, 3.5 GB RAM, 1 vGPU (~2.4 GB VRAM, shared) |
 
 ### Sample GPU Job
